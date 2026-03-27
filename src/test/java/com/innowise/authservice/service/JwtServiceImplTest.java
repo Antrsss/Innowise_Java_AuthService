@@ -2,17 +2,25 @@ package com.innowise.authservice.service;
 
 import com.innowise.authservice.entity.Role;
 import com.innowise.authservice.entity.UserCredentials;
-import com.innowise.authservice.exception.UnauthorizedException;
 import com.innowise.authservice.service.impl.JwtServiceImpl;
+import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@SpringBootTest
+@ActiveProfiles("test")
 class JwtServiceImplTest {
 
   private JwtServiceImpl jwtService;
-  private final String secret = "my_super_secret_key_for_testing_purposes_only_32_chars";
+
+  @Value("${jwt.secret}")
+  private String secret;
+
   private UserCredentials user;
 
   @BeforeEach
@@ -50,7 +58,7 @@ class JwtServiceImplTest {
   @Test
   void validateToken_ShouldThrowException_WhenTokenIsInvalid() {
     String invalidToken = "invalid.token.here";
-    assertThrows(UnauthorizedException.class, () -> jwtService.validateToken(invalidToken));
+    assertThrows(JwtException.class, () -> jwtService.validateToken(invalidToken));
   }
 
   @Test

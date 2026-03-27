@@ -3,10 +3,14 @@ package com.innowise.authservice.controller;
 import com.innowise.authservice.dto.AuthRequest;
 import com.innowise.authservice.dto.TokenResponse;
 import com.innowise.authservice.dto.RefreshRequest;
+import com.innowise.authservice.dto.TokenValidationResponse;
+import com.innowise.authservice.entity.Role;
 import com.innowise.authservice.exception.ResourceConflictException;
 import com.innowise.authservice.exception.UnauthorizedException;
 import com.innowise.authservice.service.AuthService;
 import com.innowise.authservice.service.JwtService;
+import io.jsonwebtoken.Claims;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,8 +24,8 @@ public class AuthController {
   private final AuthService authService;
   private final JwtService jwtService;
 
-  @PostMapping("/save")
-  public ResponseEntity<String> saveUser(@RequestBody AuthRequest authRequest)
+  @PostMapping("/register")
+  public ResponseEntity<String> saveUser(@RequestBody @Valid AuthRequest authRequest)
       throws ResourceConflictException {
 
     authService.saveUser(authRequest);
@@ -29,25 +33,34 @@ public class AuthController {
   }
 
   @PostMapping("/login")
-  public ResponseEntity<TokenResponse> login(@RequestBody AuthRequest authRequest)
+  public ResponseEntity<TokenResponse> login(@RequestBody @Valid AuthRequest authRequest)
       throws UnauthorizedException {
 
     return ResponseEntity.ok(authService.login(authRequest));
   }
 
   @PostMapping("/refresh")
-  public ResponseEntity<TokenResponse> refresh(@RequestBody RefreshRequest refreshRequest)
+  public ResponseEntity<TokenResponse> refresh(@RequestBody @Valid RefreshRequest refreshRequest)
       throws UnauthorizedException {
 
-    String newAccessToken = authService.refreshAccessToken(refreshRequest.refreshToken());
-    return ResponseEntity.ok(new TokenResponse(newAccessToken, refreshRequest.refreshToken()));
+    return ResponseEntity.ok(authService.refreshAccessToken(refreshRequest.refreshToken()));
   }
 
   @GetMapping("/validate")
-  public ResponseEntity<String> validate(@RequestParam("token") String token)
+  public ResponseEntity<TokenValidationResponse> validate(@RequestParam("token") String token)
       throws UnauthorizedException {
 
-    jwtService.validateToken(token);
-    return ResponseEntity.ok("Token is valid");
+    Claims claims = jwtService.validateToken(token);
+
+    String roleName = claims.get("role", String.class);
+    Role role = Role.valueOf(roleName);
+
+    return ResponseEntity.ok(new TokenValidationResponse(
+        true,
+        claims.get("userId", Long.class),
+        claims.getSubject(),
+        role.name(),
+        "Token is active"
+    ));
   }
 }

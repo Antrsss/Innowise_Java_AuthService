@@ -1,8 +1,10 @@
 package com.innowise.authservice.service;
 
+import com.innowise.authservice.dao.RefreshTokenDao;
 import com.innowise.authservice.dao.UserCredentialsDao;
 import com.innowise.authservice.dto.AuthRequest;
 import com.innowise.authservice.dto.TokenResponse;
+import com.innowise.authservice.entity.RefreshToken;
 import com.innowise.authservice.entity.Role;
 import com.innowise.authservice.entity.UserCredentials;
 import com.innowise.authservice.exception.ResourceConflictException;
@@ -16,9 +18,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Instant;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -31,6 +36,8 @@ class AuthServiceImplTest {
   private PasswordEncoder passwordEncoder;
   @Mock
   private JwtService jwtService;
+  @Mock
+  private RefreshTokenDao refreshTokenDao;
 
   @InjectMocks
   private AuthServiceImpl authService;
@@ -72,12 +79,15 @@ class AuthServiceImplTest {
     when(passwordEncoder.matches(authRequest.password(), user.getPassword())).thenReturn(true);
     when(jwtService.generateAccessToken(user)).thenReturn("access_token");
     when(jwtService.generateRefreshToken(user)).thenReturn("refresh_token");
+    doNothing().when(refreshTokenDao).deleteByUser(user);
 
     TokenResponse response = authService.login(authRequest);
 
     assertNotNull(response);
     assertEquals("access_token", response.accessToken());
     assertEquals("refresh_token", response.refreshToken());
+    verify(refreshTokenDao, times(1)).deleteByUser(user);
+    verify(refreshTokenDao, times(1)).save(any());
   }
 
   @Test
@@ -91,14 +101,24 @@ class AuthServiceImplTest {
   @Test
   void refreshAccessToken_ShouldReturnNewToken_WhenRefreshTokenIsValid() throws UnauthorizedException {
     String refreshToken = "valid_refresh_token";
+    String newAccessToken = "new_access_token";
+
+    RefreshToken mockTokenEntity = RefreshToken.builder()
+        .token(refreshToken)
+        .expiryDate(Instant.now().plusSeconds(3600))
+        .user(user)
+        .build();
+
+    when(refreshTokenDao.findByToken(refreshToken)).thenReturn(Optional.of(mockTokenEntity));
     when(jwtService.isTokenExpired(refreshToken)).thenReturn(false);
-    when(jwtService.extractLogin(refreshToken)).thenReturn("testUser");
-    when(credentialsDao.findByLogin("testUser")).thenReturn(Optional.of(user));
-    when(jwtService.generateAccessToken(user)).thenReturn("new_access_token");
+    when(jwtService.generateAccessToken(user)).thenReturn(newAccessToken);
 
-    String newToken = authService.refreshAccessToken(refreshToken);
+    TokenResponse response = authService.refreshAccessToken(refreshToken);
 
-    assertEquals("new_access_token", newToken);
+    assertNotNull(response);
+    assertEquals(newAccessToken, response.accessToken());
+    assertEquals(refreshToken, response.refreshToken());
+    verify(refreshTokenDao).findByToken(refreshToken);
     verify(jwtService).generateAccessToken(user);
   }
 
@@ -123,18 +143,31 @@ class AuthServiceImplTest {
   @Test
   void refreshAccessToken_ShouldThrowUnauthorized_WhenTokenExpired() {
     String expiredToken = "expired";
+    RefreshToken mockTokenEntity = new RefreshToken();
+    mockTokenEntity.setExpiryDate(Instant.now().plusSeconds(3600));
+
+    when(refreshTokenDao.findByToken(expiredToken)).thenReturn(Optional.of(mockTokenEntity));
     when(jwtService.isTokenExpired(expiredToken)).thenReturn(true);
 
     assertThrows(UnauthorizedException.class, () -> authService.refreshAccessToken(expiredToken));
   }
 
   @Test
-  void refreshAccessToken_ShouldThrowUnauthorized_WhenUserNotFoundAfterExtract() {
+  void refreshAccessToken_ShouldThrowUnauthorized_WhenUserNotFoundInToken() {
     String token = "valid_token";
-    when(jwtService.isTokenExpired(token)).thenReturn(false);
-    when(jwtService.extractLogin(token)).thenReturn("nonExistentUser");
-    when(credentialsDao.findByLogin("nonExistentUser")).thenReturn(Optional.empty());
 
-    assertThrows(UnauthorizedException.class, () -> authService.refreshAccessToken(token));
+    RefreshToken mockTokenEntity = RefreshToken.builder()
+        .token(token)
+        .expiryDate(Instant.now().plusSeconds(3600))
+        .user(null)
+        .build();
+
+    when(refreshTokenDao.findByToken(token)).thenReturn(Optional.of(mockTokenEntity));
+    when(jwtService.isTokenExpired(token)).thenReturn(false);
+
+    UnauthorizedException exception = assertThrows(UnauthorizedException.class,
+        () -> authService.refreshAccessToken(token));
+
+    assertEquals("User associated with token not found", exception.getMessage());
   }
 }

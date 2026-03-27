@@ -37,9 +37,9 @@ class AuthIntegrationTest {
 
   @Test
   void fullAuthCycle_IntegrationTest() throws Exception {
-    AuthRequest authRequest = new AuthRequest("integration_user", "password123", Role.ROLE_USER);
+    AuthRequest authRequest = new AuthRequest("integration_user@example.com", "password123", Role.ROLE_USER);
 
-    mockMvc.perform(post("/auth/save")
+    mockMvc.perform(post("/auth/register")
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(authRequest)))
         .andExpect(status().isCreated());

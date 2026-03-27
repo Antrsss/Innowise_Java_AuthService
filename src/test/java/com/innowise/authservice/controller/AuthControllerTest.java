@@ -3,11 +3,13 @@ package com.innowise.authservice.controller;
 import com.innowise.authservice.dto.AuthRequest;
 import com.innowise.authservice.dto.RefreshRequest;
 import com.innowise.authservice.dto.TokenResponse;
+import com.innowise.authservice.dto.TokenValidationResponse;
 import com.innowise.authservice.entity.Role;
 import com.innowise.authservice.exception.ResourceConflictException;
 import com.innowise.authservice.exception.UnauthorizedException;
 import com.innowise.authservice.service.AuthService;
 import com.innowise.authservice.service.JwtService;
+import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -92,7 +94,8 @@ class AuthControllerTest {
   @Test
   void refresh_ShouldReturnNewTokenResponse_WhenRefreshTokenIsValid() throws UnauthorizedException {
     String newAccessToken = "new-access-token-789";
-    when(authService.refreshAccessToken(refreshRequest.refreshToken())).thenReturn(newAccessToken);
+    when(authService.refreshAccessToken(refreshRequest.refreshToken()))
+        .thenReturn(new TokenResponse(newAccessToken, "refresh-token-456"));
 
     ResponseEntity<TokenResponse> response = authController.refresh(refreshRequest);
 
@@ -117,12 +120,28 @@ class AuthControllerTest {
   @Test
   void validate_ShouldReturnOk_WhenTokenIsValid() throws UnauthorizedException {
     String validToken = "valid-jwt-token";
-    doNothing().when(jwtService).validateToken(validToken);
+    String expectedUsername = "testUser";
+    Long expectedId = 1L;
+    String expectedRole = "ROLE_USER";
 
-    ResponseEntity<String> response = authController.validate(validToken);
+    Claims mockClaims = mock(Claims.class);
+    when(mockClaims.getSubject()).thenReturn(expectedUsername);
+    when(mockClaims.get("userId", Long.class)).thenReturn(expectedId);
+    when(mockClaims.get("role", String.class)).thenReturn(expectedRole);
+
+    when(jwtService.validateToken(validToken)).thenReturn(mockClaims);
+
+    ResponseEntity<TokenValidationResponse> response = authController.validate(validToken);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isEqualTo("Token is valid");
+    TokenValidationResponse body = response.getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.isValid()).isTrue();
+    assertThat(body.login()).isEqualTo(expectedUsername);
+    assertThat(body.userId()).isEqualTo(expectedId);
+    assertThat(body.role()).isEqualTo(expectedRole);
+
     verify(jwtService, times(1)).validateToken(validToken);
   }
 

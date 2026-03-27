@@ -29,7 +29,7 @@ public class JwtServiceImpl implements JwtService {
 
   @Override
   public String extractLogin(String token) {
-    return extractAllClaims(token)
+    return validateToken(token)
         .getSubject();
   }
 
@@ -54,24 +54,13 @@ public class JwtServiceImpl implements JwtService {
 
   @Override
   public boolean isTokenExpired(String token) {
-    return extractAllClaims(token)
+    return validateToken(token)
         .getExpiration()
         .before(new Date());
   }
 
   @Override
-  public void validateToken(String token) throws UnauthorizedException {
-    try {
-      Jwts.parser()
-          .verifyWith(key)
-          .build()
-          .parseSignedClaims(token);
-    } catch (Exception e) {
-      throw new UnauthorizedException("Token validation failed: " + e.getMessage());
-    }
-  }
-
-  private Claims extractAllClaims(String token) {
+  public Claims validateToken(String token) throws UnauthorizedException {
     return Jwts.parser()
         .verifyWith(key)
         .build()
